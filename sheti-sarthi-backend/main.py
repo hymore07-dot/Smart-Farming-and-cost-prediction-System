@@ -18,6 +18,37 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sheti-Sarthi Backend API")
 
+@app.on_event("startup")
+def seed_default_accounts():
+    """Ensure reliable default demo accounts are always present in the database on launch."""
+    try:
+        from database import SessionLocal
+        db = SessionLocal()
+        defaults = [
+            ("Harshad More", "9404907834", "123456"),
+            ("Abhinav Rajput", "9876543210", "123456"),
+        ]
+        for name, phone, pwd in defaults:
+            existing = db.query(models.User).filter(models.User.phone_number == phone).first()
+            if not existing:
+                new_u = models.User(
+                    name=name,
+                    phone_number=phone,
+                    hashed_password=auth.get_password_hash(pwd),
+                    language_pref="mr"
+                )
+                db.add(new_u)
+                print(f"[AUTH SEED] Created demo user: {name} ({phone})")
+            else:
+                if not auth.verify_password(pwd, existing.hashed_password):
+                    existing.hashed_password = auth.get_password_hash(pwd)
+                    print(f"[AUTH SEED] Synced verified password for: {name} ({phone})")
+        db.commit()
+        db.close()
+    except Exception as e:
+        print("[WARN] Seed demo accounts error:", e)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
