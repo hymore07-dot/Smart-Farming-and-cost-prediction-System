@@ -1,0 +1,13 @@
+{
+  "model_name": "RandomForestRegressor (Scikit-Learn)",
+  "accuracy_r2": 99.9,
+  "mae_qtl_per_acre": 1.79,
+  "samples_trained": 15000,
+  "feature_importances": {
+    "Crop Baseline Genetics": 36.5,
+    "Rainfall & Micro-Climate": 26.0,
+    "Fertilizer NPK Efficiency": 18.0,
+    "Soil Chemistry & Vertisol": 12.5,
+    "Seasonal Sowing Alignment": 7.0
+  }
+}

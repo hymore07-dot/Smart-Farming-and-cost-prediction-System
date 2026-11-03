@@ -1,0 +1,42 @@
+# Environment variables & secrets (CRITICAL)
+.env
+*.env
+.env.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+dist/
+
+# Unrelated project folders
+Nemesis/
+portfolio/
+
+# Root scratch / legacy migration scripts
+/50
+/add_loader.py
+/fix-*.cjs
+/fix_*.py
+/init_db.py
+/inject_ml.py
+/live_updater.py
+/make_dynamic.py
+/shetisarthi.db
+/test_backend_logic.py
+/train_model.py
+/train_precision_model.py
+/update_costs_db.py
+/update_main_predict.py
+
+# OS/IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
