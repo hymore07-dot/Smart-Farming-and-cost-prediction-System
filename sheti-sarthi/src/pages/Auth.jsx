@@ -21,6 +21,25 @@ const Auth = ({ onLogin }) => {
     language_pref: 'English'
   });
 
+  const getLocalUsers = () => {
+    try {
+      return JSON.parse(localStorage.getItem('shetisarthi_local_users') || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalUser = (userObj) => {
+    try {
+      const users = getLocalUsers();
+      const filtered = users.filter(u => u.phone_number !== userObj.phone_number);
+      filtered.push(userObj);
+      localStorage.setItem('shetisarthi_local_users', JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('Could not save user locally:', e);
+    }
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -61,32 +80,51 @@ const Auth = ({ onLogin }) => {
           executeSuccessfulLogin(response.data, response.data.access_token);
           return;
         } catch (apiErr) {
-          // If live cloud backend is sleeping or URL is misconfigured, verify demo account fallback
           const phone = formData.phone_number.trim();
           const pwd = formData.password.trim();
+
+          // 1. Check if user is one of the built-in demo accounts
           if ((phone === '9404907834' || phone === '9876543210') && (pwd === '123456' || pwd === 'password')) {
             const name = phone === '9404907834' ? 'Harshad More' : 'Abhinav Rajput';
             executeSuccessfulLogin({ name, phone }, 'offline_verified_token');
             return;
           }
+
+          // 2. Check if user registered an account locally or when backend was offline
+          const localUsers = getLocalUsers();
+          const matched = localUsers.find(u => u.phone_number === phone && u.password === pwd);
+          if (matched) {
+            executeSuccessfulLogin({ name: matched.name, phone: matched.phone_number }, 'local_verified_token');
+            return;
+          }
+
           throw apiErr;
         }
       } else {
         // Register API Call
+        const newUserData = {
+          name: formData.name.trim(),
+          phone_number: formData.phone_number.trim(),
+          password: formData.password.trim(),
+          language_pref: formData.language_pref
+        };
+
         try {
-          await axios.post(`${currentBaseUrl}/auth/register`, {
-            name: formData.name.trim(),
-            phone_number: formData.phone_number.trim(),
-            password: formData.password.trim(),
-            language_pref: formData.language_pref
-          }, { timeout: 8000 });
-          setIsLogin(true);
-          alert('Registration successful! Please login.');
+          await axios.post(`${currentBaseUrl}/auth/register`, newUserData, { timeout: 8000 });
         } catch (regErr) {
-          // Fallback registration
-          setIsLogin(true);
-          alert(`Account registered for ${formData.name}! Please login with password: ${formData.password}`);
+          // If phone is already registered in backend database
+          if (regErr.response?.data?.detail === "Phone number already registered") {
+            setError("This phone number is already registered. Please login.");
+            return;
+          }
+          console.warn("Backend unavailable during registration, saving locally:", regErr);
         }
+
+        // Save account locally so user can always log in immediately
+        saveLocalUser(newUserData);
+        alert(`Account created successfully for ${newUserData.name}! Logging you in...`);
+        executeSuccessfulLogin({ name: newUserData.name, phone: newUserData.phone_number }, 'registered_account_token');
+        return;
       }
     } catch (err) {
       console.error('Auth error:', err);
@@ -128,7 +166,7 @@ const Auth = ({ onLogin }) => {
             {isLogin ? 'Welcome Back!' : 'Join Sheti-Sarthi'}
           </h2>
           <p className="text-green-700 mt-1 font-medium text-sm">
-            {isLogin ? 'Login to access your farm intelligence dashboard' : 'Register to get smart farming intelligence'}
+            {isLogin ? 'Login to access your farm intelligence dashboard' : 'Register a new farmer account to get smart agricultural insights'}
           </p>
         </div>
 
@@ -169,7 +207,7 @@ const Auth = ({ onLogin }) => {
                     name="phone_number" 
                     value={formData.phone_number}
                     onChange={handleChange}
-                    placeholder="e.g. 9404907834" 
+                    placeholder="e.g. 9822012345" 
                     required
                     className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
                   />
@@ -216,17 +254,31 @@ const Auth = ({ onLogin }) => {
                 {loading ? (
                   <span className="flex items-center">
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                    Authenticating...
+                    {isLogin ? 'Authenticating...' : 'Creating Account...'}
                   </span>
                 ) : (
                   isLogin ? (
                     <><LogIn className="w-4 h-4 mr-2" /> Login Securely</>
                   ) : (
-                    <><UserPlus className="w-4 h-4 mr-2" /> Complete Registration</>
+                    <><UserPlus className="w-4 h-4 mr-2" /> Create New Account</>
                   )
                 )}
               </button>
             </form>
+
+            {/* Switch between Login and Register */}
+            <div className="mt-5 text-center">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError('');
+                }}
+                className="text-xs font-bold text-green-700 hover:text-green-800 hover:underline"
+              >
+                {isLogin ? "🌱 Don't have an account? Register a New Farm" : "🌾 Already have an account? Back to Login"}
+              </button>
+            </div>
 
             {/* Guaranteed 1-Click Demo Section */}
             {isLogin && (
@@ -256,19 +308,6 @@ const Auth = ({ onLogin }) => {
                 </p>
               </div>
             )}
-
-            <div className="mt-5 text-center">
-              <button 
-                type="button" 
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setError('');
-                }}
-                className="text-xs font-bold text-green-700 hover:text-green-800 hover:underline"
-              >
-                {isLogin ? "Don't have an account? Register Farm" : "Already have an account? Login"}
-              </button>
-            </div>
 
             {/* Cloud Backend Configuration Drawer */}
             <div className="mt-5 pt-4 border-t border-gray-100 text-center">
