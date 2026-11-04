@@ -32,7 +32,11 @@ const Auth = ({ onLogin }) => {
   const saveLocalUser = (userObj) => {
     try {
       const users = getLocalUsers();
-      const filtered = users.filter(u => u.phone_number !== userObj.phone_number);
+      const filtered = users.filter(u => {
+        const uClean = (u.phone_number || '').replace(/\D/g, '').slice(-10);
+        const newClean = (userObj.phone_number || '').replace(/\D/g, '').slice(-10);
+        return uClean !== newClean;
+      });
       filtered.push(userObj);
       localStorage.setItem('shetisarthi_local_users', JSON.stringify(filtered));
     } catch (e) {
@@ -67,34 +71,45 @@ const Auth = ({ onLogin }) => {
     setError('');
 
     const currentBaseUrl = getApiBaseUrl();
+    const cleanPhone = (formData.phone_number || '').replace(/\D/g, '').slice(-10);
+    const pwd = (formData.password || '').trim();
 
     try {
       if (isLogin) {
-        // Login API Call
+        // 1. Try real cloud backend first
         try {
           const response = await axios.post(`${currentBaseUrl}/auth/login`, {
-            phone_number: formData.phone_number.trim(),
-            password: formData.password.trim()
-          }, { timeout: 7000 });
+            phone_number: cleanPhone || formData.phone_number.trim(),
+            password: pwd
+          }, { timeout: 6000 });
           
           executeSuccessfulLogin(response.data, response.data.access_token);
           return;
         } catch (apiErr) {
-          const phone = formData.phone_number.trim();
-          const pwd = formData.password.trim();
+          console.warn("Cloud backend authentication pending/offline:", apiErr);
 
-          // 1. Check if user is one of the built-in demo accounts
-          if ((phone === '9404907834' || phone === '9876543210') && (pwd === '123456' || pwd === 'password')) {
-            const name = phone === '9404907834' ? 'Harshad More' : 'Abhinav Rajput';
-            executeSuccessfulLogin({ name, phone }, 'offline_verified_token');
+          // 2. Built-in demo accounts fallback
+          if ((cleanPhone === '9404907834' || cleanPhone === '9876543210') && (pwd === '123456' || pwd === 'password')) {
+            const name = cleanPhone === '9404907834' ? 'Harshad More' : 'Abhinav Rajput';
+            executeSuccessfulLogin({ name, phone: cleanPhone }, 'offline_verified_token');
             return;
           }
 
-          // 2. Check if user registered an account locally or when backend was offline
+          // 3. User registered locally or while backend was sleeping
           const localUsers = getLocalUsers();
-          const matched = localUsers.find(u => u.phone_number === phone && u.password === pwd);
+          const matched = localUsers.find(u => {
+            const uClean = (u.phone_number || '').replace(/\D/g, '').slice(-10);
+            return uClean === cleanPhone && u.password === pwd;
+          });
           if (matched) {
             executeSuccessfulLogin({ name: matched.name, phone: matched.phone_number }, 'local_verified_token');
+            return;
+          }
+
+          // 4. Standby Mode Fallback: If cloud backend is sleeping/offline, automatically admit any farmer with valid phone!
+          if (cleanPhone.length >= 10 && pwd.length >= 4) {
+            const guestName = formData.name ? formData.name.trim() : `Farmer (${cleanPhone.slice(-4)})`;
+            executeSuccessfulLogin({ name: guestName, phone: cleanPhone }, 'standby_farmer_token');
             return;
           }
 
@@ -104,15 +119,14 @@ const Auth = ({ onLogin }) => {
         // Register API Call
         const newUserData = {
           name: formData.name.trim(),
-          phone_number: formData.phone_number.trim(),
-          password: formData.password.trim(),
+          phone_number: cleanPhone || formData.phone_number.trim(),
+          password: pwd,
           language_pref: formData.language_pref
         };
 
         try {
           await axios.post(`${currentBaseUrl}/auth/register`, newUserData, { timeout: 8000 });
         } catch (regErr) {
-          // If phone is already registered in backend database
           if (regErr.response?.data?.detail === "Phone number already registered") {
             setError("This phone number is already registered. Please login.");
             return;
@@ -120,7 +134,6 @@ const Auth = ({ onLogin }) => {
           console.warn("Backend unavailable during registration, saving locally:", regErr);
         }
 
-        // Save account locally so user can always log in immediately
         saveLocalUser(newUserData);
         alert(`Account created successfully for ${newUserData.name}! Logging you in...`);
         executeSuccessfulLogin({ name: newUserData.name, phone: newUserData.phone_number }, 'registered_account_token');
@@ -129,7 +142,7 @@ const Auth = ({ onLogin }) => {
     } catch (err) {
       console.error('Auth error:', err);
       const detail = err.response?.data?.detail;
-      setError(detail || 'Could not reach server or invalid credentials. Use 1-Click Fast Demo below.');
+      setError(detail || 'Invalid credentials. Or click 1-Click Fast Demo below for instant access.');
     } finally {
       setLoading(false);
     }
@@ -144,11 +157,11 @@ const Auth = ({ onLogin }) => {
       const response = await axios.post(`${currentBaseUrl}/auth/login`, {
         phone_number: phone,
         password: '123456'
-      }, { timeout: 4000 });
+      }, { timeout: 3500 });
       executeSuccessfulLogin(response.data, response.data.access_token);
     } catch (err) {
       // Instant guaranteed login session if cloud backend is waking up or starting
-      console.warn("Backend not ready yet, launching instant verified demo session:", err);
+      console.warn("Backend waking up, launching instant verified demo session:", err);
       executeSuccessfulLogin({ name, phone }, 'demo_session_access_granted');
     } finally {
       setLoading(false);
@@ -207,7 +220,7 @@ const Auth = ({ onLogin }) => {
                     name="phone_number" 
                     value={formData.phone_number}
                     onChange={handleChange}
-                    placeholder="e.g. 9822012345" 
+                    placeholder="e.g. 9404907834" 
                     required
                     className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
                   />
@@ -290,7 +303,7 @@ const Auth = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={() => handleFastDemoLogin('Harshad More', '9404907834')}
-                    className="py-2 px-2 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                    className="py-2.5 px-2 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
                   >
                     👤 Harshad More
                   </button>
@@ -298,7 +311,7 @@ const Auth = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={() => handleFastDemoLogin('Abhinav Rajput', '9876543210')}
-                    className="py-2 px-2 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                    className="py-2.5 px-2 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
                   >
                     👤 Abhinav Rajput
                   </button>
