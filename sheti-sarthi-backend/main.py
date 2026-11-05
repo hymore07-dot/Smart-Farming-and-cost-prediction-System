@@ -71,14 +71,27 @@ class PredictRequest(BaseModel):
 
 
 import os
-try:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(BASE_DIR, 'ml_models', 'yield_model.pkl')
-    ml_model = joblib.load(model_path)
-    print("[OK] Loaded Random Forest Yield Prediction Model from:", model_path)
-except Exception as e:
-    print("[WARN] ML Model not found. Falling back to rule-based logic.", e)
-    ml_model = None
+import gc
+
+ml_model = None
+_model_load_attempted = False
+
+def get_ml_model():
+    """Lazy load Random Forest model only when predict is called, keeping startup RAM under 80MB on Render free tier."""
+    global ml_model, _model_load_attempted
+    if not _model_load_attempted:
+        _model_load_attempted = True
+        try:
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(BASE_DIR, 'ml_models', 'yield_model.pkl')
+            if os.path.exists(model_path):
+                ml_model = joblib.load(model_path)
+                print("[OK] Loaded Random Forest Yield Prediction Model from:", model_path)
+                gc.collect()
+        except Exception as e:
+            print("[WARN] ML Model load failed or Low RAM fallback:", e)
+            ml_model = None
+    return ml_model
 
 @app.post("/api/predict")
 def predict_cost_profit(data: PredictRequest):
@@ -156,7 +169,11 @@ def predict_cost_profit(data: PredictRequest):
             
             features = pd.DataFrame([[c_val, s_val, sz_val, rain_mm, fert_kg]], 
                                   columns=['crop', 'soil', 'season', 'rainfall_mm', 'fertilizer_kg'])
-            per_acre_yield = float(ml_model.predict(features)[0])
+            current_ml = get_ml_model()
+            if current_ml is not None:
+                per_acre_yield = float(current_ml.predict(features)[0])
+            else:
+                raise ValueError("Using empirical yield baseline")
         except Exception as e:
             print("ML Prediction Error, fallback:", e)
             avg_yields = {"soybean": 5.5, "soyabean": 5.5, "cotton": 8.5, "wheat": 15.0, "rice": 18.5, "sugarcane": 350.0}
