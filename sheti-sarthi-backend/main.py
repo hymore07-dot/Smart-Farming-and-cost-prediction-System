@@ -18,6 +18,23 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sheti-Sarthi Backend API")
 
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "service": "Sheti-Sarthi AI Agriculture Backend API",
+        "documentation": "/docs",
+        "api_root": "/api",
+        "endpoints": ["/api/predict", "/api/weather", "/api/market", "/api/disease/detect", "/api/auth/login"]
+    }
+
+@app.get("/api")
+def read_api_root():
+    return {
+        "status": "online",
+        "message": "Sheti-Sarthi API Gateway ready"
+    }
+
 @app.on_event("startup")
 def seed_default_accounts():
     """Ensure reliable default demo accounts are always present in the database on launch."""

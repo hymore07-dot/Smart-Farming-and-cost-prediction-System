@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-// Allows dynamic configuration via localStorage, environment variable, or default local server
+// Allows dynamic configuration via localStorage, environment variable, or default production Render server
 export const getApiBaseUrl = () => {
-  return localStorage.getItem('shetisarthi_api_url') || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+  return localStorage.getItem('shetisarthi_api_url') || import.meta.env.VITE_API_BASE_URL || 'https://smart-farming-and-cost-prediction-system.onrender.com/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
